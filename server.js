@@ -21,7 +21,9 @@ function escapeHtml(value) {
 function renderItem(item) {
   return `
     <li>
-      <strong>${escapeHtml(item.courseName)}</strong>「${escapeHtml(item.title)}」
+      <a href="/items/${item.id}">
+        <strong>${escapeHtml(item.courseName)}</strong>「${escapeHtml(item.title)}」
+      </a>
       - ${item.price}円
       - 出品者: ${escapeHtml(item.sellerName)}
     </li>
@@ -85,6 +87,27 @@ app.post('/items', async (req, res) => {
   });
 
   res.redirect('/');
+});
+
+app.get('/items/:id', async (req, res) => {
+  const id = Number(req.params.id);
+
+  const item = !Number.isNaN(id) ? await prisma.item.findUnique({ where: { id } }) : null;
+
+  if (!item) {
+    res.status(404).send('<h1>404 Not Found</h1><p>指定された商品は見つかりませんでした。</p>');
+    return;
+  }
+
+  res.send(`
+    <h1>${escapeHtml(item.courseName)}「${escapeHtml(item.title)}」</h1>
+    <p>説明: ${escapeHtml(item.description || '(なし)')}</p>
+    <p>価格: ${item.price}円</p>
+    <p>出品者名: ${escapeHtml(item.sellerName)}</p>
+    <p>連絡先: ${escapeHtml(item.sellerContact)}</p>
+    <p>出品日時: ${item.createdAt.toLocaleString('ja-JP')}</p>
+    <p><a href="/">一覧に戻る</a></p>
+  `);
 });
 
 app.get('/health', async (req, res) => {
