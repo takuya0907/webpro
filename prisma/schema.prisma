@@ -24,18 +24,20 @@ model User {
 }
 
 model Item {
-  id          Int     @id @default(autoincrement())
-  sellerId    Int
-  courseName  String
-  title       String
-  description String?
-  price       Int
-  type        String  @default("fixed")
-  status      String  @default("available")
+  id            Int     @id @default(autoincrement())
+  sellerId      Int?
+  sellerName    String
+  sellerContact String
+  courseName    String
+  title         String
+  description   String?
+  price         Int
+  type          String  @default("fixed")
+  status        String  @default("available")
 
   createdAt DateTime @default(now())
 
-  seller   User      @relation(fields: [sellerId], references: [id])
+  seller   User?     @relation(fields: [sellerId], references: [id])
   messages Message[]
 }
 
