@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Webプロ06 - HTML/CSS</title>
+
+    <!-- 既存のCSSリセットはそのまま保持 -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/destyle.css@4.0.1/destyle.css"
+      rel="stylesheet"
+    />
+
+    <style>
+      /* ------------------------------
+         全体設定
+      ------------------------------ */
+      body {
+        min-height: 100vh;
+
+        display: grid;
+        place-items: center;
+
+        background: #f5f7fb;
+        font-family: sans-serif;
+        color: #333;
+      }
+
+      /* ------------------------------
+         プロフィールカード
+      ------------------------------ */
+      .profile-card {
+        width: min(90%, 720px);
+
+        background: #ffffff;
+        border-radius: 24px;
+        padding: 32px;
+
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        grid-template-areas:
+          "icon profile"
+          "intro intro";
+        gap: 24px;
+        align-items: center;
+      }
+
+      /* ------------------------------
+         アイコン
+      ------------------------------ */
+      .profile-image {
+        grid-area: icon;
+
+        width: 160px;
+        height: 160px;
+
+        border-radius: 50%;
+        object-fit: cover;
+
+        border: 6px solid #f3c26b;
+        background: #fff8e8;
+      }
+
+      /* ------------------------------
+         名前・所属エリア
+      ------------------------------ */
+      .profile-info {
+        grid-area: profile;
+
+        display: grid;
+        gap: 12px;
+      }
+
+      /* 既存の h1 を活かしつつ調整 */
+      h1 {
+        font-size: 40px;
+        font-weight: 700;
+        color: #c47300;
+
+        padding-left: 12px;
+        border-left: 8px solid #c47300;
+      }
+
+      .affiliation {
+        font-size: 20px;
+        color: #666;
+        padding-left: 20px;
+      }
+
+      /* ------------------------------
+         自己紹介
+      ------------------------------ */
+      .description {
+        grid-area: intro;
+
+        line-height: 1.8;
+        font-size: 18px;
+
+        background: #fff8ee;
+        border-radius: 16px;
+        padding: 20px;
+
+        color: #444;
+      }
+
+      /* ------------------------------
+         スマホ対応
+      ------------------------------ */
+      @media (max-width: 640px) {
+        .profile-card {
+          grid-template-columns: 1fr;
+          grid-template-areas:
+            "icon"
+            "profile"
+            "intro";
+
+          justify-items: center;
+          text-align: center;
+        }
+
+        h1 {
+          border-left: none;
+          border-bottom: 6px solid #c47300;
+          padding-left: 0;
+          padding-bottom: 8px;
+        }
+
+        .affiliation {
+          padding-left: 0;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- レイアウト用に wrap 要素を追加 -->
+    <div class="profile-card">
+
+      <!-- 指定された画像を追加 -->
+      <img
+        class="profile-image"
+        src="https://prog-8.com/images/sass/wanko.svg"
+        alt="プロフィール画像"
+      />
+
+      <!-- 名前・所属 -->
+      <div class="profile-info">
+        <h1>黒河拓也</h1>
+        <div class="affiliation">ひつじ仙人の弟子</div>
+      </div>
+
+      <!-- 自己紹介 -->
+      <div class="description">
+        羊の皮を被ったエンジニアです。今は Web プログラミングを勉強しています。
+      </div>
+
+    </div>
+  </body>
+</html>
