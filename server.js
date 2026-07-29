@@ -1,16 +1,44 @@
 require('dotenv').config();
 const path = require('node:path');
 const express = require('express');
+const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
+const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
 const { PrismaPg } = require('@prisma/adapter-pg');
 
 const app = express();
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+const sessionPool = new Pool({ connectionString: process.env.DATABASE_URL });
 const PORT = process.env.PORT || 3000;
 
+app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  store: new PgSession({ pool: sessionPool, createTableIfMissing: true }),
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: 'auto',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  },
+}));
+
+app.use(async (req, res, next) => {
+  if (req.session.userId) {
+    req.user = await prisma.user.findUnique({ where: { id: req.session.userId } });
+  } else {
+    req.user = null;
+  }
+  next();
+});
 
 function escapeHtml(value) {
   return String(value)
@@ -20,7 +48,27 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-function layout(title, body) {
+function renderHeader(user) {
+  if (user) {
+    return `
+      <header class="site-header">
+        <span class="header-user">${escapeHtml(user.name)}さん</span>
+        <form method="POST" action="/logout" class="inline-form">
+          <button type="submit" class="link-button">ログアウト</button>
+        </form>
+      </header>
+    `;
+  }
+
+  return `
+    <header class="site-header">
+      <a href="/login">ログイン</a>
+      <a href="/signup">新規登録</a>
+    </header>
+  `;
+}
+
+function layout(title, body, user) {
   return `<!doctype html>
 <html lang="ja">
 <head>
@@ -31,6 +79,7 @@ function layout(title, body) {
 </head>
 <body>
 <div class="container">
+${renderHeader(user)}
 ${body}
 </div>
 </body>
@@ -69,6 +118,35 @@ function renderSellForm(values = {}, errors = {}) {
   `;
 }
 
+function renderSignupForm(values = {}, errors = {}) {
+  return `
+    <section class="card-panel">
+      <h2>新規登録</h2>
+      <form method="POST" action="/signup" class="form-grid">
+        ${field('email', 'メールアドレス(@keio.jpのみ)', { value: values.email, error: errors.email, type: 'email' })}
+        ${field('name', '名前', { value: values.name, error: errors.name })}
+        ${field('password', 'パスワード', { value: '', error: errors.password, type: 'password' })}
+        <button type="submit" class="btn-primary">登録する</button>
+      </form>
+      <p><a href="/login">すでにアカウントをお持ちの方はこちら</a></p>
+    </section>
+  `;
+}
+
+function renderLoginForm(values = {}, errors = {}) {
+  return `
+    <section class="card-panel">
+      <h2>ログイン</h2>
+      <form method="POST" action="/login" class="form-grid">
+        ${field('email', 'メールアドレス', { value: values.email, error: errors.email, type: 'email' })}
+        ${field('password', 'パスワード', { value: '', error: errors.password, type: 'password' })}
+        <button type="submit" class="btn-primary">ログインする</button>
+      </form>
+      <p><a href="/signup">新規登録はこちら</a></p>
+    </section>
+  `;
+}
+
 function renderItemCard(item) {
   const soldBadge = item.status === 'sold' ? '<span class="badge badge-sold">SOLD</span>' : '';
 
@@ -83,11 +161,20 @@ function renderItemCard(item) {
   `;
 }
 
-function renderHomePage({ q = '', hideSold = false, items, formValues = {}, formErrors = {} }) {
+function renderHomePage({ q = '', hideSold = false, items, formValues = {}, formErrors = {}, user }) {
+  const sellSection = user
+    ? renderSellForm(formValues, formErrors)
+    : `
+      <section class="card-panel">
+        <h2>出品する</h2>
+        <p>出品するには<a href="/login">ログイン</a>または<a href="/signup">新規登録</a>してください。</p>
+      </section>
+    `;
+
   return `
     <h1>慶應教科書売買アプリ</h1>
 
-    ${renderSellForm(formValues, formErrors)}
+    ${sellSection}
 
     <section class="card-panel">
       <h2>検索</h2>
@@ -169,6 +256,31 @@ function validateItemInput(body) {
   return { values, errors };
 }
 
+function validateSignupInput(body) {
+  const values = {
+    email: (body.email || '').trim().toLowerCase(),
+    name: (body.name || '').trim(),
+    password: body.password || '',
+  };
+
+  const errors = {};
+  if (!values.email) {
+    errors.email = 'メールアドレスを入力してください';
+  } else if (!values.email.endsWith('@keio.jp')) {
+    errors.email = '@keio.jp のメールアドレスのみ登録できます';
+  }
+
+  if (!values.name) errors.name = '名前を入力してください';
+
+  if (!values.password) {
+    errors.password = 'パスワードを入力してください';
+  } else if (values.password.length < 8) {
+    errors.password = 'パスワードは8文字以上で入力してください';
+  }
+
+  return { values, errors };
+}
+
 function fetchItems({ q, hideSold }) {
   const conditions = [];
 
@@ -196,23 +308,34 @@ app.get('/', async (req, res) => {
   const hideSold = req.query.hideSold === 'on';
 
   const items = await fetchItems({ q, hideSold });
+  const formValues = req.user ? { sellerName: req.user.name, sellerContact: req.user.email } : {};
 
-  res.send(layout('慶應教科書売買アプリ', renderHomePage({ q, hideSold, items })));
+  res.send(layout('慶應教科書売買アプリ', renderHomePage({ q, hideSold, items, formValues, user: req.user }), req.user));
 });
 
 app.post('/items', async (req, res) => {
+  if (!req.user) {
+    res.redirect('/login');
+    return;
+  }
+
   const { values, errors } = validateItemInput(req.body);
 
   if (Object.keys(errors).length > 0) {
     const items = await fetchItems({ q: '', hideSold: false });
     res
       .status(400)
-      .send(layout('慶應教科書売買アプリ', renderHomePage({ items, formValues: values, formErrors: errors })));
+      .send(layout(
+        '慶應教科書売買アプリ',
+        renderHomePage({ items, formValues: values, formErrors: errors, user: req.user }),
+        req.user
+      ));
     return;
   }
 
   await prisma.item.create({
     data: {
+      sellerId: req.user.id,
       courseName: values.courseName,
       title: values.title,
       description: values.description || null,
@@ -231,29 +354,101 @@ app.get('/items/:id', async (req, res) => {
   const item = !Number.isNaN(id) ? await prisma.item.findUnique({ where: { id } }) : null;
 
   if (!item) {
-    res.status(404).send(layout('404 Not Found', renderNotFound()));
+    res.status(404).send(layout('404 Not Found', renderNotFound(), req.user));
     return;
   }
 
-  res.send(layout(`${item.courseName} | 慶應教科書売買アプリ`, renderItemDetail(item)));
+  res.send(layout(`${item.courseName} | 慶應教科書売買アプリ`, renderItemDetail(item), req.user));
 });
 
 app.post('/items/:id/sold', async (req, res) => {
   const id = Number(req.params.id);
 
   if (Number.isNaN(id)) {
-    res.status(404).send(layout('404 Not Found', renderNotFound()));
+    res.status(404).send(layout('404 Not Found', renderNotFound(), req.user));
     return;
   }
 
   try {
     await prisma.item.update({ where: { id }, data: { status: 'sold' } });
   } catch (err) {
-    res.status(404).send(layout('404 Not Found', renderNotFound()));
+    res.status(404).send(layout('404 Not Found', renderNotFound(), req.user));
     return;
   }
 
   res.redirect(`/items/${id}`);
+});
+
+app.get('/signup', (req, res) => {
+  if (req.user) {
+    res.redirect('/');
+    return;
+  }
+
+  res.send(layout('新規登録 | 慶應教科書売買アプリ', renderSignupForm(), req.user));
+});
+
+app.post('/signup', async (req, res) => {
+  const { values, errors } = validateSignupInput(req.body);
+
+  if (Object.keys(errors).length === 0) {
+    const existing = await prisma.user.findUnique({ where: { email: values.email } });
+    if (existing) {
+      errors.email = 'このメールアドレスは既に登録されています';
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    res.status(400).send(layout(
+      '新規登録 | 慶應教科書売買アプリ',
+      renderSignupForm({ email: values.email, name: values.name }, errors),
+      req.user
+    ));
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(values.password, 10);
+  const user = await prisma.user.create({
+    data: { email: values.email, name: values.name, passwordHash },
+  });
+
+  req.session.userId = user.id;
+  res.redirect('/');
+});
+
+app.get('/login', (req, res) => {
+  if (req.user) {
+    res.redirect('/');
+    return;
+  }
+
+  res.send(layout('ログイン | 慶應教科書売買アプリ', renderLoginForm(), req.user));
+});
+
+app.post('/login', async (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  const password = req.body.password || '';
+
+  const user = email ? await prisma.user.findUnique({ where: { email } }) : null;
+  const passwordOk = user ? await bcrypt.compare(password, user.passwordHash) : false;
+
+  if (!user || !passwordOk) {
+    res.status(401).send(layout(
+      'ログイン | 慶應教科書売買アプリ',
+      renderLoginForm({ email }, { password: 'メールアドレスまたはパスワードが正しくありません' }),
+      req.user
+    ));
+    return;
+  }
+
+  req.session.userId = user.id;
+  res.redirect('/');
+});
+
+app.post('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/');
+  });
 });
 
 app.get('/health', async (req, res) => {

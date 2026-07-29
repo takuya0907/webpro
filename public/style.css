@@ -28,6 +28,42 @@ body {
   padding: 24px 16px;
 }
 
+.site-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
+.site-header a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.site-header a:hover {
+  text-decoration: underline;
+}
+
+.header-user {
+  color: var(--color-muted);
+}
+
+.inline-form {
+  display: inline;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 h1 {
   font-size: 1.6rem;
   margin: 0 0 1.25rem;
