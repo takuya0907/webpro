@@ -29,7 +29,19 @@ function renderItem(item) {
 }
 
 app.get('/', async (req, res) => {
-  const items = await prisma.item.findMany({ orderBy: { createdAt: 'desc' } });
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+  const items = await prisma.item.findMany({
+    where: q
+      ? {
+          OR: [
+            { courseName: { contains: q, mode: 'insensitive' } },
+            { title: { contains: q, mode: 'insensitive' } },
+          ],
+        }
+      : undefined,
+    orderBy: { createdAt: 'desc' },
+  });
 
   res.send(`
     <h1>慶應教科書売買アプリ</h1>
@@ -43,6 +55,12 @@ app.get('/', async (req, res) => {
       <div><label>出品者名: <input name="sellerName" required></label></div>
       <div><label>連絡先: <input name="sellerContact" required></label></div>
       <div><button type="submit">出品する</button></div>
+    </form>
+
+    <h2>検索</h2>
+    <form method="GET" action="/">
+      <label>授業名・教科書名で検索: <input name="q" value="${escapeHtml(q)}"></label>
+      <button type="submit">検索</button>
     </form>
 
     <h2>出品一覧</h2>
